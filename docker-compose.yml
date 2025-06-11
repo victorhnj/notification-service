@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  notification-service:
+    build: .
+    container_name: notification-service
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/usr/src/app
+    environment:
+      - NODE_ENV=production
+    networks:
+      - fintrack-network
+
+networks:
+  fintrack-network:
+    driver: bridge
