@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../middlewares/authMiddleware'); // opcional, pode comentar se não quiser JWT
+const authMiddleware = require('../middlewares/authMiddleware'); 
 const notificationController = require('../controllers/notificationController');
 
 // router.use(authMiddleware); 

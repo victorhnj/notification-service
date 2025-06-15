@@ -1,50 +1,52 @@
-
 const { connectRabbitMQ } = require('../infrastructure/messaging/rabbitmq');
 const notificationService = require('../services/notificationService');
-const notificationTemplates = require('../templates/notificationTemplates');
+const { sendPushNotification } = require('../utils/sendPushNotification'); // 👈 Importação do util
 
 async function startNotificationConsumer() {
-    const channel = await connectRabbitMQ();
+    try {
+        const channel = await connectRabbitMQ();
 
-    console.log('🟢 Aguardando mensagens na fila "notification"...');
+        channel.consume('notification', async (msg) => {
+            if (msg !== null) {
+                const messageContent = msg.content.toString();
+                console.log(`Received message: ${messageContent}`);
 
-    channel.consume('notification', async (msg) => {
-        if (msg !== null) {
-            const content = msg.content.toString();
-            console.log(`📥 Mensagem recebida: ${content}`);
+                try {
+                    const payload = JSON.parse(messageContent);
 
-            try {
-                const eventData = JSON.parse(content);
+                    // Monta a notificação com os dados esperados + constantes
+                    const notification = {
+                        userId: payload.userId,
+                        tipoConta: payload.tipoConta,
+                        dataVencimento: payload.dataVencimento,
+                        valor: payload.valor,
+                        event: 'conta_a_vencer',
+                        push: true
+                    };
 
-                const templateFunc = notificationTemplates[eventData.event];
-                if (!templateFunc) {
-                    console.warn(`⚠️ Template não encontrado para evento: ${eventData.event}`);
-                    channel.ack(msg);
-                    return;
+                    // Grava no banco
+                    await notificationService.createNotification(notification);
+
+                    // Dispara o push automaticamente
+                    await sendPushNotification(notification.userId, {
+                        title: `Conta a vencer: ${notification.tipoConta}`,
+                        body: `Valor: R$ ${notification.valor} - Vence em: ${notification.dataVencimento}`
+                    });
+
+                    channel.ack(msg); // Confirma que a msg foi processada
+
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                    // Se der erro, não faz ack — mensagem pode ser reprocessada
                 }
-
-                const { title, message } = templateFunc(eventData);
-
-                await notificationService.createNotification({
-                    userId: eventData.userId,
-                    title,
-                    message,
-                    type: eventData.event,
-                    scheduledFor: null,
-                    sendEmail: eventData.sendEmail || false,
-                    sendPush: eventData.sendPush || false,
-                    pushToken: eventData.pushToken || null
-                });
-
-                console.log(`✅ Notificação gerada para userId=${eventData.userId}`);
-
-                channel.ack(msg);
-            } catch (error) {
-                console.error(`❌ Erro ao processar mensagem:`, error);
-                channel.nack(msg);
             }
-        }
-    }, { noAck: false });
+        }, {
+            noAck: false
+        });
+
+    } catch (error) {
+        console.error('Failed to start notification consumer:', error);
+    }
 }
 
 module.exports = { startNotificationConsumer };
